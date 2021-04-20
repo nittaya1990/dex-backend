@@ -91,7 +91,7 @@ namespace API
                               config.AddEnvironmentVariables();
                           })
                           .UseSentry()
-                          .UseStartup<Startup>()
+                          .UseStartup<Startup>().UseSetting("testing", "false")
                           .UseKestrel(o => o.AddServerHeader = false)
                           .UseSerilog();
         }

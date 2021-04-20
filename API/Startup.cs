@@ -29,6 +29,7 @@ using MessageBrokerPublisher.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -98,11 +99,21 @@ namespace API
         public void ConfigureServices(IServiceCollection services)
         {
             IdentityModelEventSource.ShowPII = true;
-            services.AddDbContext<ApplicationDbContext>(o =>
+            string testing = Config.OriginalConfiguration["testing"];
+
+            if(testing == "true")
             {
-                o.UseSqlServer(Config.OriginalConfiguration.GetConnectionString("DefaultConnection"),
-                               sqlOptions => sqlOptions.EnableRetryOnFailure(50, TimeSpan.FromSeconds(30), null));
-            });
+                SqliteConnection sqliteConnection = new SqliteConnection("DataSource=file::memory:?cache=shared");
+                sqliteConnection.Open();
+                services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(sqliteConnection, sqlOptions => { sqlOptions.MigrationsAssembly("01_API"); }));
+            } else
+            {
+                services.AddDbContext<ApplicationDbContext>(o =>
+                {
+                    o.UseSqlServer(Config.OriginalConfiguration.GetConnectionString("DefaultConnection"),
+                                   sqlOptions => sqlOptions.EnableRetryOnFailure(50, TimeSpan.FromSeconds(30), null));
+                });
+            }
 
             services.AddSingleton<IRabbitMQConnectionFactory>(c => new RabbitMQConnectionFactory(Config.RabbitMQ.Hostname, Config.RabbitMQ.Username, Config.RabbitMQ.Password));
 
@@ -310,15 +321,18 @@ namespace API
             env.WebRootPath = Path.Combine(Directory.GetCurrentDirectory(), "Uploads");
             Defaults.Path.FilePath = Path.Combine(env.WebRootPath, "Images");
 
+            string testing = Config.OriginalConfiguration["testing"];
 
-            UpdateDatabase(app, env);
+            
+
+            UpdateDatabase(app, env, testing);
             if(env.IsDevelopment())
             {
                 //app.UseBrowserLink();
                 app.UseDeveloperExceptionPage();
 
                 //app.UseDatabaseErrorPage();
-            } else if(env.IsProduction())
+            } else if(env.IsProduction() || testing == "true")
             {
                 app.UseExceptionHandler(new ExceptionHandlerOptions
                                         {
@@ -329,8 +343,7 @@ namespace API
                                                 return Task.CompletedTask;
                                             }
                                         });
-            } else
-            {
+            } else {
                 app.UseExceptionHandler();
             }
 
@@ -459,12 +472,19 @@ namespace API
         /// </summary>
         /// <param name="app">The application.</param>
         /// <param name="env">The env.</param>
-        private static void UpdateDatabase(IApplicationBuilder app, IWebHostEnvironment env)
+        /// <param name="isTesting"></param>
+        private static void UpdateDatabase(IApplicationBuilder app, IWebHostEnvironment env, string isTesting)
         {
             using IServiceScope serviceScope = app.ApplicationServices
                                                   .GetRequiredService<IServiceScopeFactory>()
                                                   .CreateScope();
             using ApplicationDbContext context = serviceScope.ServiceProvider.GetService<ApplicationDbContext>();
+
+            if(isTesting == "true")
+            {
+                context.Database.EnsureCreated();
+            }
+            
             context.Database.Migrate();
 
             // Check if Roles and RoleScopes in DB matches seed, if it doesn't match: database is updated.
