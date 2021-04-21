@@ -1,3 +1,4 @@
+using _15_Integration.Tests.Helpers;
 using API.Resources;
 using IdentityServer;
 using Integration.Tests.TestFixture;
@@ -28,7 +29,7 @@ namespace Integration.Tests
         }
 
         [SetUp]
-        public async void Setup()
+        public void Setup()
         {
             string tokenUrl = "/connect/token";
             string clientId = "dex-api-client";
@@ -42,10 +43,14 @@ namespace Integration.Tests
                 };
             identityClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
                                                 "Basic", Convert.ToBase64String(
-                                                System.Text.ASCIIEncoding.ASCII.GetBytes(
+                                                System.Text.Encoding.ASCII.GetBytes(
                $"{clientId}:{clientSecret}")));
-            HttpResponseMessage response = await identityClient.PostAsync(tokenUrl, new FormUrlEncodedContent(form));
-            var jsonContent = await response.Content.ReadAsStringAsync();
+
+            HttpResponseMessage response =
+                AsyncHelper.RunSync(() => identityClient.PostAsync(tokenUrl, new FormUrlEncodedContent(form)));
+            string jsonContent =
+                AsyncHelper.RunSync(() => response.Content.ReadAsStringAsync());
+
             access_token = JObject.Parse(jsonContent)["access_token"].ToString();
         }
 
@@ -57,8 +62,9 @@ namespace Integration.Tests
             
             ProjectResultsResource projects = JsonConvert.DeserializeObject<ProjectResultsResource>(await response.Content.ReadAsStringAsync());
 
-            Assert.AreEqual(projects.Count, a);
+            Assert.AreEqual(projects.Count, expectedAmountOfProjects);
             Assert.AreEqual(response.StatusCode, System.Net.HttpStatusCode.OK);
+            Assert.Fail();
         }
 
         [Test]
