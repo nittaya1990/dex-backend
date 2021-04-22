@@ -7,28 +7,30 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Integration.Tests
 {
     public class IntTests
     {
-        private readonly InMemoryFixture inMemoryFixture;
         private readonly HttpClient apiClient;
         private readonly HttpClient identityClient;
-
         private string access_token;
 
         public IntTests()
         {
-            inMemoryFixture = new InMemoryFixture();
-            apiClient = inMemoryFixture.InMemoryApi.Client;
-            identityClient = inMemoryFixture.InMemoryIdentity.Client;
+            HttpClientHandler handler = new HttpClientHandler();
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => { return true; };
+
+            apiClient = new HttpClient(handler) { BaseAddress = new Uri("https://localhost:5001") };
+            identityClient = new HttpClient(handler) { BaseAddress = new Uri("https://localhost:5005") };
         }
 
-        [SetUp]
+        [OneTimeSetUp]
         public void Setup()
         {
             string tokenUrl = "/connect/token";
@@ -62,14 +64,13 @@ namespace Integration.Tests
             
             ProjectResultsResource projects = JsonConvert.DeserializeObject<ProjectResultsResource>(await response.Content.ReadAsStringAsync());
 
-            Assert.AreEqual(projects.Count, expectedAmountOfProjects);
-            Assert.AreEqual(response.StatusCode, System.Net.HttpStatusCode.OK);
-            Assert.Fail();
+            Assert.AreEqual(response.StatusCode, HttpStatusCode.OK);
         }
 
         [Test]
-        [TestCase("TestProject", "Long description", "ShortDescription", "https://testuri.com/", null, 0, null, false, null)]
-        public async Task PostProject(string name, string description, string shortdescription, string uri, ICollection<CollaboratorResource> collaborators, int fileId, CallToActionResource callToAction, bool institutePrivate, ICollection<ProjectCategoryResource> categories)
+        [TestCase("TestProject", "Long description", "ShortDescription", "https://testuri.com/", null, 0, null, false, null, HttpStatusCode.Created)]
+        [TestCase("", "", "", "" , null, null, null, false, null, HttpStatusCode.Forbidden)]
+        public async Task PostProject(string name, string description, string shortdescription, string uri, ICollection<CollaboratorResource> collaborators, int fileId, CallToActionResource callToAction, bool institutePrivate, ICollection<ProjectCategoryResource> categories, HttpStatusCode expectedStatusCode)
         {
             ProjectResource projectResource = new ProjectResource()
             {
@@ -80,12 +81,19 @@ namespace Integration.Tests
                 Collaborators = collaborators,
                 FileId = fileId,
                 CallToAction = callToAction,
-                InstitutePrivate = false,
+                InstitutePrivate = institutePrivate,
                 Categories = categories
             };
 
+            apiClient.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", access_token);
+            apiClient.DefaultRequestHeaders.Add("IdentityId", "88421113");
+
+            HttpContent c = new StringContent(JsonConvert.SerializeObject(projectResource), Encoding.UTF8, "application/json");
+            HttpResponseMessage response = await apiClient.PostAsync("/api/Project", c);
 
 
+            Assert.AreEqual(expectedStatusCode, response.StatusCode);
         }
     }
 }
