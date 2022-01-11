@@ -54,6 +54,7 @@ namespace Repositories
         /// <param name="orderByAsc"></param>
         /// <param name="highlighted"></param>
         /// <param name="categories"></param>
+        /// <param name="tags"></param>
         /// <returns>List of projects</returns>
         Task<List<Project>> GetAllWithUsersCollaboratorsAndInstitutionsAsync(
             int? skip = null,
@@ -61,7 +62,8 @@ namespace Repositories
             Expression<Func<Project, object>> orderBy = null,
             bool orderByAsc = true,
             bool? highlighted = null,
-            ICollection<int> categories = null
+            ICollection<int> categories = null,
+            ICollection<int> tags = null
         );
 
         /// <summary>
@@ -71,13 +73,22 @@ namespace Repositories
         /// <returns></returns>
         Task<Project> FindAsyncNotRedacted(int id);
 
+
+
+        /// <summary>
+        /// Find multiple projects by their id
+        /// </summary>
+        /// <param name="ids"></param>
+        /// <returns></returns>
+        Task<List<Project>> FindAsyncByMultipleIds(int [] ids);
+
         /// <summary>
         ///     This interface method counts the amount of projects matching the filters.
         /// </summary>
         /// <param name="highlighted"></param>
         /// <param name="categories">The categories parameter represents the categories the project needs to have</param>
         /// <returns>number of projects found</returns>
-        Task<int> CountAsync(bool? highlighted = null, ICollection<int> categories = null, int? userId = null);
+        Task<int> CountAsync(bool? highlighted = null, ICollection<int> categories = null, ICollection<int> tags = null, int? userId = null);
 
         /// <summary>
         ///     This interface method searches the database for projects matching the search query and parameters.
@@ -97,7 +108,8 @@ namespace Repositories
             Expression<Func<Project, object>> orderBy = null,
             bool orderByAsc = true,
             bool? highlighted = null,
-            ICollection<int> categories = null
+            ICollection<int> categories = null,
+            ICollection<int> tags = null
         );
 
         /// <summary>
@@ -107,7 +119,7 @@ namespace Repositories
         /// <param name="highlighted">The highlighted parameter represents the whether to filter highlighted projects.</param>
         /// <param name="categories">The categories parameter represents the categories the project needs to have</param>
         /// <returns>This method returns the amount of projects matching the filters.</returns>
-        Task<int> SearchCountAsync(string query, bool? highlighted = null, ICollection<int> categories = null);
+        Task<int> SearchCountAsync(string query, bool? highlighted = null, ICollection<int> categories = null, ICollection<int> tags = null);
 
 
         Task SyncProjectToES(Project project);
@@ -136,7 +148,8 @@ namespace Repositories
                                                    Expression<Func<Project, object>> orderBy = null,
                                                    bool orderByAsc = true,
                                                    bool? highlighted = null,
-                                                   ICollection<int> categories = null);
+                                                   ICollection<int> categories = null,
+                                                   ICollection<int> tags = null);
         Task<List<Project>> GetLikedProjectsFromSimilarUser(int userId, int similarUserId);
         void CreateProjectIndex();
         void DeleteIndex();
@@ -189,6 +202,7 @@ namespace Repositories
                                     .Include(p => p.ProjectIcon)
                                     .Include(p => p.CallToActions)
                                     .Include(p => p.Images)
+                                    .Include(p => p.Tags)
                                     .SingleOrDefaultAsync();
 
             if(project != null)
@@ -217,6 +231,7 @@ namespace Repositories
         /// <param name="orderByAsc">The order by asc parameters represents the order direction (True: asc, False: desc)</param>
         /// <param name="highlighted">The highlighted parameter represents the whether to filter highlighted projects.</param>
         /// <param name="categories">The categories parameter represents the categories the project needs to have</param>
+        /// <param name="tags">The tags parameter represents the tags the project needs to have</param>
         /// <returns>This method returns a list of projects filtered by the specified parameters.</returns>
         public virtual async Task<List<Project>> GetAllWithUsersCollaboratorsAndInstitutionsAsync(
                     int? skip = null,
@@ -224,7 +239,8 @@ namespace Repositories
                     Expression<Func<Project, object>> orderBy = null,
                     bool orderByAsc = true,
                     bool? highlighted = null,
-                    ICollection<int> categories = null
+                    ICollection<int> categories = null,
+                    ICollection<int> tags = null
                 )
         {
             IQueryable<Project> queryableProjects = GetDbSet<Project>()
@@ -235,9 +251,11 @@ namespace Repositories
                 .Include(p => p.Likes)
                 .Include(p => p.LinkedInstitutions)
                 .Include(p => p.Categories)
-                .ThenInclude(c => c.Category);
+                .ThenInclude(c => c.Category)
+                .Include(p => p.Tags)
+                .ThenInclude(t => t.Tag);
 
-            queryableProjects = ApplyFilters(queryableProjects, skip, take, orderBy, orderByAsc, highlighted, categories);
+            queryableProjects = ApplyFilters(queryableProjects, skip, take, orderBy, orderByAsc, highlighted, categories, tags);
 
             //Execute the IQueryable to get a collection of results
             //Don't get the description for performance reasons.
@@ -256,6 +274,11 @@ namespace Repositories
                 {
                     Category = c.Category,
                     Id = c.Id
+                }).ToList(),
+                Tags = p.Tags.Select(t => new ProjectTag()
+                {
+                    Tag = t.Tag,
+                    Id = t.Id
                 }).ToList(),
                 Created = p.Created,
                 InstitutePrivate = p.InstitutePrivate,
@@ -276,15 +299,15 @@ namespace Repositories
         /// <param name="highlighted">The highlighted parameter represents whether to filter highlighted projects.</param>
         /// <param name="categories">The categories parameter represents the categories the project needs to have</param>
         /// <returns>This method returns the amount of projects matching the filters.</returns>
-        public virtual async Task<int> CountAsync(bool? highlighted = null, ICollection<int> categories = null, int? userId = null)
+        public virtual async Task<int> CountAsync(bool? highlighted = null, ICollection<int> categories = null, ICollection<int> tags = null, int? userId = null)
         {
             if(userId.HasValue)
             {
-                return await ApplyFilters(DbSet, null, null, null, true, highlighted, categories)
+                return await ApplyFilters(DbSet, null, null, null, true, highlighted, categories, tags)
                              .Where(p => p.UserId == userId)
                              .CountAsync();
             }
-            return await ApplyFilters(DbSet, null, null, null, true, highlighted, categories)
+            return await ApplyFilters(DbSet, null, null, null, true, highlighted, categories, tags)
                        .CountAsync();
         }
 
@@ -306,11 +329,12 @@ namespace Repositories
             Expression<Func<Project, object>> orderBy = null,
             bool orderByAsc = true,
             bool? highlighted = null,
-            ICollection<int> categories = null
+            ICollection<int> categories = null,
+            ICollection<int> tags = null
         )
         {
             List<Project> result =
-                await ApplyFilters(await GetProjectQueryable(query), skip, take, orderBy, orderByAsc, highlighted, categories)
+                await ApplyFilters(await GetProjectQueryable(query), skip, take, orderBy, orderByAsc, highlighted, categories, tags)
                     .ToListAsync();
             return result.Where(p => ProjectContainsQuery(p, query))
                          .ToList();
@@ -323,9 +347,9 @@ namespace Repositories
         /// <param name="highlighted">The highlighted parameter represents the whether to filter highlighted projects.</param>
         /// <param name="categories">The categories parameter represents the categories the project needs to have</param>
         /// <returns>This method returns the amount of projects matching the filters.</returns>
-        public virtual async Task<int> SearchCountAsync(string query, bool? highlighted = null, ICollection<int> categories = null)
+        public virtual async Task<int> SearchCountAsync(string query, bool? highlighted = null, ICollection<int> categories = null, ICollection<int> tags = null)
         {
-            return await ApplyFilters(await GetProjectQueryable(query), null, null, null, true, highlighted, categories)
+            return await ApplyFilters(await GetProjectQueryable(query), null, null, null, true, highlighted, categories, tags)
                        .CountAsync();
         }
 
@@ -356,6 +380,10 @@ namespace Repositories
                                       .ToListAsync();
                 project.Categories = await GetDbSet<ProjectCategory>()
                                       .Include(p => p.Category)
+                                      .Where(p => p.Project.Id == project.Id)
+                                      .ToListAsync();
+                project.Tags = await GetDbSet<ProjectTag>()
+                                      .Include(p => p.Tag)
                                       .Where(p => p.Project.Id == project.Id)
                                       .ToListAsync();
 
@@ -494,7 +522,7 @@ namespace Repositories
             Expression<Func<Project, object>> orderBy = null,
             bool orderByAsc = true,
             bool? highlighted = null,
-            ICollection<int> categories = null)
+            ICollection<int> categories = null, ICollection<int> tags = null)
         {
             IQueryable<Project> projects = GetDbSet<Project>()
                                            .Include(p => p.Collaborators)
@@ -502,33 +530,36 @@ namespace Repositories
                                            .Include(p => p.Images)
                                            .Include(p => p.Categories)
                                            .ThenInclude(c => c.Category)
+                                           .Include(p => p.Tags)
+                                           .ThenInclude(t => t.Tag)
                                            .Where(p => p.UserId == userId);
 
-            projects = ApplyFilters(projects, skip, take, orderBy, orderByAsc, highlighted, categories);
+            projects = ApplyFilters(projects, skip, take, orderBy, orderByAsc, highlighted, categories, tags);
 
             List<Project> projectResults = await projects.Select(p => new Project
-                  {
-                      UserId = p.UserId,
-                      User = p.User,
-                      Id = p.Id,
-                      ProjectIconId = p.ProjectIconId,
-                      ProjectIcon = p.ProjectIcon,
-                      CallToActions = p.CallToActions,
-                      Collaborators = p.Collaborators,
-                      Likes = p.Likes,
-                      LinkedInstitutions = p.LinkedInstitutions,
-                      Categories = p.Categories.Select(c => new ProjectCategory()
-                          {
-                              Category = c.Category,
-                              Id = c.Id
-                          }).ToList(),
-                      Created = p.Created,
-                      InstitutePrivate = p.InstitutePrivate,
-                      Name = p.Name,
-                      ShortDescription = p.ShortDescription,
-                      Updated = p.Updated,
-                      Uri = p.Uri
-                  })
+            {
+                UserId = p.UserId,
+                User = p.User,
+                Id = p.Id,
+                ProjectIconId = p.ProjectIconId,
+                ProjectIcon = p.ProjectIcon,
+                CallToActions = p.CallToActions,
+                Collaborators = p.Collaborators,
+                Likes = p.Likes,
+                LinkedInstitutions = p.LinkedInstitutions,
+                Categories = p.Categories.Select(c => new ProjectCategory()
+                {
+                    Category = c.Category,
+                    Id = c.Id
+                }).ToList(),
+                Created = p.Created,
+                InstitutePrivate = p.InstitutePrivate,
+                Name = p.Name,
+                ShortDescription = p.ShortDescription,
+                Updated = p.Updated,
+                Uri = p.Uri,
+                Tags = p.Tags,
+            })
                     .ToListAsync();
             return projectResults;
         }
@@ -613,6 +644,7 @@ namespace Repositories
         /// <param name="orderByAsc">The order by asc parameters represents the order direction (True: asc, False: desc)</param>
         /// <param name="highlighted">The highlighted parameter represents the whether to filter highlighted projects.</param>
         /// <param name="categories"></param>
+        /// <param name="tags"></param>
         /// <returns>
         ///     This method returns a IQueryable Projects collection based on the given filters.
         /// </returns>
@@ -623,7 +655,8 @@ namespace Repositories
             Expression<Func<Project, object>> orderBy,
             bool orderByAsc,
             bool? highlighted,
-            ICollection<int> categories
+            ICollection<int> categories,
+            ICollection<int> tags
         )
         {
             if(highlighted.HasValue)
@@ -644,6 +677,11 @@ namespace Repositories
                 // Check for every project if there is any project-category that matches the selected categories
                 // queryable = queryable.Where(p => p.Categories.All(cat => categories.Contains(cat.Category.Id)));
                 queryable = queryable.Where(p => p.Categories.Any(cat => categories.Contains(cat.Category.Id)));
+            }
+
+            if(tags != null && tags.Count > 0)
+            {
+                queryable = queryable.Where(p => p.Tags.Any(tag => tags.Contains(tag.Id)));
             }
 
             if(orderBy != null)
@@ -675,15 +713,22 @@ namespace Repositories
         {
             Regex regex = new Regex(@$"{query}", RegexOptions.Singleline | RegexOptions.IgnoreCase);
             Regex wholeWordRegex = new Regex(@$"\b{query}\b", RegexOptions.Singleline | RegexOptions.IgnoreCase);
-            return new List<string>
-                   {
-                       project.Description,
-                       project.ShortDescription,
-                       project.Uri,
-                       project.User.Name,
-                       project.Id.ToString()
-                   }
-                .Any(text => wholeWordRegex.IsMatch(text))
+
+            List<string> searchableList = new List<string>();
+
+            foreach(ProjectTag tag in project.Tags)
+            {
+                searchableList.Add(tag.Tag.Name);
+            }
+
+            searchableList.Add(project.Description);
+            searchableList.Add(project.ShortDescription);
+            searchableList.Add(project.Uri);
+            searchableList.Add(project.User.Name);
+            searchableList.Add(project.User.Name);
+            searchableList.Add(project.Id.ToString());
+
+            return searchableList.Any(text => wholeWordRegex.IsMatch(text))
                 || regex.IsMatch(project.Name);
         }
 
@@ -696,14 +741,16 @@ namespace Repositories
         {
             IQueryable<Project> projectsToReturn = GetDbSet<Project>()
                                                    .Include(u => u.User)
+                                                   .Include(p => p.Tags)
                                                    .Where(p =>
                                                               p.Name.Contains(query) ||
+                                                              p.Tags.Any(x => x.Tag.Name.Contains(query) ||
                                                               p.Description.Contains(query) ||
                                                               p.ShortDescription.Contains(query) ||
                                                               p.Uri.Contains(query) ||
                                                               p.Id.ToString()
                                                                .Equals(query) ||
-                                                              p.User.Name.Contains(query));
+                                                              p.User.Name.Contains(query)));
             projectsToReturn.Include(p => p.ProjectIcon).Load();
             projectsToReturn.Include(p => p.CallToActions).Load();
             projectsToReturn.Include(p => p.Likes).Load();
@@ -719,6 +766,10 @@ namespace Repositories
                                       .ToListAsync();
                 project.Categories = await GetDbSet<ProjectCategory>()
                                       .Include(p => p.Category)
+                                      .Where(p => p.Project.Id == project.Id)
+                                      .ToListAsync();
+                project.Tags = await GetDbSet<ProjectTag>()
+                                      .Include(p => p.Tag)
                                       .Where(p => p.Project.Id == project.Id)
                                       .ToListAsync();
             }
@@ -832,6 +883,18 @@ namespace Repositories
         public Task<Project> FindAsyncNotRedacted(int id)
         {
             return GetDbSet<Project>().Where(p => p.Id == id).Include(u => u.User).FirstOrDefaultAsync();
+        }
+
+        Task<List<Project>> IProjectRepository.FindAsyncByMultipleIds(int[] ids)
+        {
+            return GetDbSet<Project>().Where(p => ids.Contains(p.Id))
+                .Include(p => p.User)
+                .Include(p => p.Tags)
+                .Include(p => p.Categories)
+                .Include(p => p.Likes)
+                .Include(p => p.CallToActions)
+                .Include(p => p.ProjectIcon)
+                .ToListAsync();
         }
     }
 }

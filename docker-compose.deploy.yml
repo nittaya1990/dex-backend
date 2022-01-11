@@ -12,6 +12,9 @@ services:
     networks:
       mssql-network:
         ipv4_address: 172.16.238.2
+    ports:
+      - 1433:1433
+    
 
   rabbitmq:
     image: 'bitnami/rabbitmq:3.8.9'
@@ -54,7 +57,8 @@ services:
       - App__Elastic__Password=${App__ElasticSearch__Password}
       - App__Elastic__IndexUrl=${App__ElasticSearch__IndexUrl}
       - App__SendGrid__EmailFrom=${App__SendGrid__EmailFrom}
-      - App__SendGrid__ApiKey=${App__SendGrid__ApiKey}      
+      - App__SendGrid__ApiKey=${App__SendGrid__ApiKey}
+      - Use__In_Memory_Database=false      
     image:  digitalexcellence/api
     networks:
       mssql-network:
@@ -85,6 +89,7 @@ services:
       - App__FfhictOIDC__RedirectUri=${FFHICTOIDC_REDIRECT_URI}
       - App__JobScheduler__ClientId=${JOBSCHEDULER_IDENTITY_CLIENTID}
       - App__JobScheduler__ClientSecet=${JOBSCHEDULER_IDENTITY_CLIENTSECRET}
+      - Use__In_Memory_Database=false
       - SENTRY_DSN=${SENTRY_DSN}  
     image: digitalexcellence/identity
 

@@ -15,6 +15,7 @@
 * If not, see https://www.gnu.org/licenses/lgpl-3.0.txt
 */
 
+using API.InputOutput.Tag;
 using API.Resources;
 using AutoMapper;
 using Models;
@@ -88,17 +89,25 @@ namespace API.Configuration
             CreateMap<User, LimitedUserOutput>();
 
             CreateMap<ProjectInput, Project>()
-                .ForMember(q => q.Categories, opt => opt.Ignore());
-            CreateMap<Project, ProjectOutput>();
+                .ForMember(q => q.Categories, opt => opt.Ignore())
+                .ForMember(q => q.Tags, opt => opt.MapFrom(t => t.Tags));
+
+            CreateMap<Project, ProjectOutput>()
+                .ForMember(q => q.Tags, opt => opt.MapFrom(t => t.Tags));
+
             CreateMap<ProjectLike, ProjectLikesOutput>();
             CreateMap<Project, ProjectHighlightOutput>();
 
             CreateMap<CollaboratorInput, Collaborator>();
             CreateMap<Collaborator, CollaboratorOutput>();
 
-            CreateMap<Project, ProjectResultInput>();
 
-            CreateMap<ProjectFilterParamsInput, ProjectFilterParams>();
+
+            CreateMap<Project, ProjectResultInput>()
+               .ForMember(q => q.Tags, opt => opt.MapFrom(t => t.Tags));
+
+            CreateMap<ProjectFilterParamsInput, ProjectFilterParams>()
+                .ForMember(e => e.Tags, opt => opt.MapFrom(d => d.Tags));
 
             CreateMap<HighlightInput, Highlight>();
             CreateMap<Highlight, HighlightOutput>()
@@ -112,7 +121,7 @@ namespace API.Configuration
             CreateMap<Category, CategoryOutput>();
             CreateMap<ProjectCategoryInput, ProjectCategory>();
             CreateMap<ProjectCategory, ProjectCategoryOutput>()
-                .ForMember(q => q.Id, opt => opt.MapFrom(q=> q.Category.Id))
+                .ForMember(q => q.Id, opt => opt.MapFrom(q => q.Category.Id))
                 .ForMember(q => q.Name, opt => opt.MapFrom(q => q.Category.Name));
 
             CreateMap<EmbeddedProjectInput, EmbeddedProject>();
@@ -175,6 +184,17 @@ namespace API.Configuration
                 .ForMember(dest => dest.InstititutionName, opt => opt.MapFrom(src => src.Institution.Name))
                 .ForMember(dest => dest.ProjectName, opt => opt.MapFrom(src => src.Project.Name));
 
+            CreateMap<Tag, TagOutput>();
+            CreateMap<TagInput, Tag>();
+            CreateMap<TagInput, ProjectTag>();
+            CreateMap<ProjectTag, TagOutput>()
+                .ForMember(dest => dest.Name, opt => opt.MapFrom(src => src.Tag.Name))
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Tag.Id));
+
+
+            CreateMap<ProjectTag, ProjectTagOutput>()
+              .ForMember(q => q.Id, opt => opt.MapFrom(q => q.Tag.Id))
+              .ForMember(q => q.Name, opt => opt.MapFrom(q => q.Tag.Name));
 
             CreateExternalSourceMappingProfiles();
         }

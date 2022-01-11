@@ -56,6 +56,14 @@ namespace Services.Services
         /// <returns></returns>
         Task<Project> FindAsyncNotRedacted(int id);
 
+
+        /// <summary>
+        /// Find multiple projects by their ids
+        /// </summary>
+        /// <param name="ids"></param>
+        /// <returns></returns>
+        Task<List<Project>> FindAsyncByMultipleIds(int[] ids);
+
         /// <summary>
         ///     Get the number of projects
         /// </summary>
@@ -181,7 +189,8 @@ namespace Services.Services
                                                                                orderBy,
                                                                                orderByDirection,
                                                                                projectFilterParams.Highlighted,
-                                                                               projectFilterParams.Categories);
+                                                                               projectFilterParams.Categories,
+                                                                               projectFilterParams.Tags);
         }
 
         /// <summary>
@@ -193,7 +202,7 @@ namespace Services.Services
         {
             if(userId.HasValue)
             {
-                return await Repository.CountAsync(projectFilterParams.Highlighted, projectFilterParams.Categories, userId);
+                return await Repository.CountAsync(projectFilterParams.Highlighted, projectFilterParams.Categories, projectFilterParams.Tags, userId);
             }
             return await Repository.CountAsync(projectFilterParams.Highlighted, projectFilterParams.Categories);
         }
@@ -310,6 +319,11 @@ namespace Services.Services
         public async Task<Project> FindAsyncNotRedacted(int id)
         {
             return await Repository.FindAsyncNotRedacted(id);
+        }
+
+        async Task<List<Project>> IProjectService.FindAsyncByMultipleIds(int[] ids)
+        {
+            return await Repository.FindAsyncByMultipleIds(ids);
         }
     }
 
